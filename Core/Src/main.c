@@ -19,17 +19,15 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "cmsis_os.h"
+#include <stdio.h>
 #include "i2c.h"
 #include "usart.h"
 #include "gpio.h"
+#include "lis2dw12_reg.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include <string.h>
-#include <stdio.h>
-#include "lis2dw12_reg.h"
-#include "stm32f4xx_hal.h"
-#include "DataScope_DP.h"
+
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -43,35 +41,25 @@
 
 /* Private macro -------------------------------------------------------------*/
 /* USER CODE BEGIN PM */
-#define SENSOR_BUS hi2c1
-#define BOOT_TIME 20 // ms
 
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
-static int16_t data_raw_acceleration[3];
-static float acceleration_mg[3];
-static uint8_t whoamI, rst;
-static uint8_t tx_buffer[1000];
+stmdev_ctx_t dev_ctx;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 void MX_FREERTOS_Init(void);
 /* USER CODE BEGIN PFP */
-
+void LIS2DW12_Init(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-static int32_t platform_write(void *handle, uint8_t reg, const uint8_t *bufp,
-                              uint16_t len);
-static int32_t platform_read(void *handle, uint8_t reg, uint8_t *bufp,
-                             uint16_t len);
-static void platform_delay(uint32_t ms);
-static void platform_init(void);
+
 /* USER CODE END 0 */
 
 /**
@@ -88,9 +76,7 @@ int main(void)
 
   /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
   HAL_Init();
-
   /* USER CODE BEGIN Init */
-
   /* USER CODE END Init */
 
   /* Configure the system clock */
@@ -105,53 +91,7 @@ int main(void)
   MX_USART2_UART_Init();
   MX_I2C1_Init();
   /* USER CODE BEGIN 2 */
-  MX_FREERTOS_Init();
-  osKernelStart();
-  /* Initialize mems driver interface */
-  stmdev_ctx_t dev_ctx;
-  dev_ctx.write_reg = platform_write;
-  dev_ctx.read_reg = platform_read;
-  dev_ctx.handle = &SENSOR_BUS;
-  /* Initialize platform specific hardware */
-  platform_init();
-  /* Wait sensor boot time */
-  platform_delay(BOOT_TIME);
-  /* Check device ID */
-  lis2dw12_device_id_get(&dev_ctx, &whoamI);
-  if (whoamI != LIS2DW12_ID)
-  {
-    printf("未获取到设备地址");
-    while (1)
-    {
-      HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
-      HAL_Delay(500);
-    }
-  }
-  /* Restore default configuration */
-  lis2dw12_reset_set(&dev_ctx, PROPERTY_ENABLE);
-
-  do
-  {
-    lis2dw12_reset_get(&dev_ctx, &rst);
-  } while (rst);
-
-  /* Enable Block Data Update */
-  lis2dw12_block_data_update_set(&dev_ctx, PROPERTY_ENABLE);
-  /* Set full scale */
-  // lis2dw12_full_scale_set(&dev_ctx, LIS2DW12_8g);
-  lis2dw12_full_scale_set(&dev_ctx, LIS2DW12_2g);
-  /* Configure filtering chain
-   * Accelerometer - filter path / bandwidth
-   */
-  lis2dw12_filter_path_set(&dev_ctx, LIS2DW12_LPF_ON_OUT);
-  lis2dw12_filter_bandwidth_set(&dev_ctx, LIS2DW12_ODR_DIV_4);
-  /* Configure power mode */
-  lis2dw12_power_mode_set(&dev_ctx, LIS2DW12_HIGH_PERFORMANCE_LOW_NOISE);
-  // lis2dw12_power_mode_set(&dev_ctx, LIS2DW12_CONT_LOW_PWR_LOW_NOISE_12bit);
-  /* Set Output Data Rate */
-  lis2dw12_data_rate_set(&dev_ctx, LIS2DW12_XL_ODR_800Hz);
-
-  /* Read samples in polling mode (no int) */
+  LIS2DW12_Init();
   /* USER CODE END 2 */
 
   /* Call init function for freertos objects (in freertos.c) */
@@ -166,29 +106,7 @@ int main(void)
   while (1)
   {
     /* USER CODE END WHILE */
-
     /* USER CODE BEGIN 3 */
-    uint8_t reg;
-    /* Read output only if new value is available */
-    lis2dw12_flag_data_ready_get(&dev_ctx, &reg);
-
-    if (reg)
-    {
-      /* Read acceleration data */
-      memset(data_raw_acceleration, 0x00, 3 * sizeof(int16_t));
-      lis2dw12_acceleration_raw_get(&dev_ctx, data_raw_acceleration);
-      // acceleration_mg[0] = lis2dw12_from_fs8_lp1_to_mg(data_raw_acceleration[0]);
-      // acceleration_mg[1] = lis2dw12_from_fs8_lp1_to_mg(data_raw_acceleration[1]);
-      // acceleration_mg[2] = lis2dw12_from_fs8_lp1_to_mg(data_raw_acceleration[2]);
-      acceleration_mg[0] = lis2dw12_from_fs2_to_mg(
-          data_raw_acceleration[0]);
-      acceleration_mg[1] = lis2dw12_from_fs2_to_mg(
-          data_raw_acceleration[1]);
-      acceleration_mg[2] = lis2dw12_from_fs2_to_mg(
-          data_raw_acceleration[2]);
-      DataScope_Send_3axis_Data(acceleration_mg[1], acceleration_mg[1], acceleration_mg[2]);
-    }
-    HAL_Delay(50);
   }
   /* USER CODE END 3 */
 }
@@ -239,68 +157,7 @@ void SystemClock_Config(void)
 }
 
 /* USER CODE BEGIN 4 */
-/*
- * @brief  Write generic device register (platform dependent)
- *
- * @param  handle    customizable argument. In this examples is used in
- *                   order to select the correct sensor bus handler.
- * @param  reg       register to write
- * @param  bufp      pointer to data to write in register reg
- * @param  len       number of consecutive register to write
- *
- */
-static int32_t platform_write(void *handle, uint8_t reg, const uint8_t *bufp,
-                              uint16_t len)
-{
 
-  HAL_I2C_Mem_Write(handle, LIS2DW12_I2C_ADD_H, reg,
-                    I2C_MEMADD_SIZE_8BIT, (uint8_t *)bufp, len, 1000);
-  return 0;
-}
-
-/*
- * @brief  Read generic device register (platform dependent)
- *
- * @param  handle    customizable argument. In this examples is used in
- *                   order to select the correct sensor bus handler.
- * @param  reg       register to read
- * @param  bufp      pointer to buffer that store the data read
- * @param  len       number of consecutive register to read
- *
- */
-static int32_t platform_read(void *handle, uint8_t reg, uint8_t *bufp,
-                             uint16_t len)
-{
-
-  HAL_I2C_Mem_Read(handle, LIS2DW12_I2C_ADD_H, reg,
-                   I2C_MEMADD_SIZE_8BIT, bufp, len, 1000);
-  return 0;
-}
-
-/*
- * @brief  platform specific delay (platform dependent)
- *
- * @param  ms        delay in ms
- *
- */
-static void platform_delay(uint32_t ms)
-{
-  HAL_Delay(ms);
-}
-
-/*
- * @brief  platform specific initialization (platform dependent)
- */
-static void platform_init(void)
-{
-#if defined(STEVAL_MKI109V3)
-  TIM3->CCR1 = PWM_3V3;
-  TIM3->CCR2 = PWM_3V3;
-  HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1);
-  HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_2);
-  HAL_Delay(1000);
-#endif
-}
 /* USER CODE END 4 */
 
 /**

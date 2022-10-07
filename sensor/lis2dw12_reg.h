@@ -1056,6 +1056,8 @@ extern "C"
    * @}
    *
    */
+  extern stmdev_ctx_t dev_ctx;
+  void LIS2DW12_Init(void);
 
 #ifdef __cplusplus
 }

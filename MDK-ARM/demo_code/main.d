@@ -47,11 +47,9 @@ demo_code\main.o: ../Middlewares/Third_Party/FreeRTOS/Source/include/timers.h
 demo_code\main.o: ../Middlewares/Third_Party/FreeRTOS/Source/include/queue.h
 demo_code\main.o: ../Middlewares/Third_Party/FreeRTOS/Source/include/semphr.h
 demo_code\main.o: ../Middlewares/Third_Party/FreeRTOS/Source/include/event_groups.h
+demo_code\main.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\stdio.h
 demo_code\main.o: ../Core/Inc/i2c.h
 demo_code\main.o: ../Core/Inc/usart.h
 demo_code\main.o: ../Core/Inc/gpio.h
-demo_code\main.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\string.h
-demo_code\main.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\stdio.h
 demo_code\main.o: ../sensor/lis2dw12_reg.h
 demo_code\main.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\math.h
-demo_code\main.o: ../datascope/DataScope_DP.h
